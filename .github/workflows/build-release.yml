@@ -1,0 +1,52 @@
+# Fork-only: a release build signed with our own key, with Meta's app tokens.
+name: Build release
+
+on:
+  push:
+    branches: [build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platform-tools platforms;android-37.0
+          log-accepted-android-sdk-licenses: false
+
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Build the release APK
+        env:
+          VISOR_META_HW_TOKEN: ${{ secrets.VISOR_META_HW_TOKEN }}
+          VISOR_META_AR_TOKEN: ${{ secrets.VISOR_META_AR_TOKEN }}
+          VISOR_META_FRL_TOKEN: ${{ secrets.VISOR_META_FRL_TOKEN }}
+          VISOR_KEYSTORE_B64: ${{ secrets.VISOR_KEYSTORE_B64 }}
+          VISOR_KEYSTORE_PASSWORD: ${{ secrets.VISOR_KEYSTORE_PASSWORD }}
+          VISOR_KEY_ALIAS: ${{ secrets.VISOR_KEY_ALIAS }}
+          VISOR_VERSION_NAME: "2.1.0"
+          VISOR_VERSION_CODE: "21000"
+        run: |
+          echo "$VISOR_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/visor.p12"
+          export VISOR_KEYSTORE="$RUNNER_TEMP/visor.p12"
+          ./gradlew :app:assembleRelease
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: visor-release-${{ github.sha }}
+          path: app/build/outputs/apk/release/app-release.apk
+          retention-days: 14
